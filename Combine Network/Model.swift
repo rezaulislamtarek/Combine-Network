@@ -12,3 +12,8 @@ struct Product : Decodable, Identifiable{
     var title : String
     var image : String
 }
+
+struct User : Decodable{
+    var id : Int
+    var name : String
+}
