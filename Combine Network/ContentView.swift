@@ -12,6 +12,38 @@ struct ContentView: View {
     var apiService = APIService()
     @State var cancellable: Set<AnyCancellable> = []
     @State var products: [Product] = []
+    
+    func addProduct(){
+        apiService
+            .postData(endpoint: "https://fakestoreapi.com/products", requestBody: Product(id: 0, title: "Product Name", image: "url/productImage"), type: Product.self)
+            .sink { completion in
+                switch completion{
+                case .finished:
+                    print(completion)
+                    break
+                case .failure(let error):
+                    switch error{
+                    case let networkError as NetworkError:
+                        switch networkError{
+                        case .validationError(let data):
+                            print(data)
+                            var validateData = try! JSONDecoder().decode(Product.self, from: data)
+                        default:
+                            print("def")
+                        }
+                    default:
+                        print(error)
+                    }
+                    
+                }
+                
+            } receiveValue: { res in
+                print( res)
+            }
+            .store(in: &cancellable)
+
+    }
+    
     var body: some View {
         VStack {
         
@@ -49,6 +81,9 @@ struct ContentView: View {
                  
             
             
+        }
+        .task {
+            addProduct()
         }
         .padding()
     }

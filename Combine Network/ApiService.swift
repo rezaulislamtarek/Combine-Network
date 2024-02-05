@@ -10,77 +10,81 @@ import Combine
 
 class APIService {
     private var cancellables = Set<AnyCancellable>()
-    /*
-    func getJSON<T: Decodable>() -> Future<T, Error> {
-        return Future<T, Error> { [weak self] promise in
-            guard let self = self, let url = URL(string: "baseUrl+endpoint") else{
-                return promise(.failure(NetworkError.invalidURL))
-            }
-            
-            var req = URLRequest(url: url)
-            req.allHTTPHeaderFields = getHeaders()
-            
-            URLSession.shared.dataTaskPublisher(for: req)
-                .retry(2)
-                .tryMap { (data, response) -> Data in
-                    guard let httpResponse = response as? HTTPURLResponse, 200...299 ~= httpResponse.statusCode else{
-                        throw NetworkError.responseError
-                    }
-                    return data
-                }
-                .decode(type: T.self, decoder: JSONDecoder())
-                .receive(on: RunLoop.main)
-            
-        }
-    }*/
     
     
     func fetctData<T : Decodable>(endpoint: String, type : T.Type) -> AnyPublisher<T, Error>{
-        print("Fetching...")
-         let url = URLRequest(url: URL(string: endpoint)!)
-        return URLSession.shared.dataTaskPublisher(for: URL(string: endpoint)!)
+        var request = URLRequest(url: URL(string: endpoint)!)
+        request.httpMethod = "GET"
+        request.allHTTPHeaderFields = getHeaders()
+        return URLSession.shared.dataTaskPublisher(for: request)
             .tryMap({ (data: Data, response: URLResponse) in
-                print("response")
+                guard let httpResponse = response as? HTTPURLResponse,
+                      httpResponse.statusCode == 200 else {
+                    throw NetworkError.badServerResponse
+                }
                 return data
             })
-             //.map(\.data)
-             .decode(type:  type.self, decoder: JSONDecoder())
-             .receive(on: DispatchQueue.main)
-             .eraseToAnyPublisher()
-     }
+        
+            .decode(type:  type.self, decoder: JSONDecoder())
+            .retry(2)
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
+    }
+    
+    func postData<T : Codable, R : Codable>(endpoint: String, requestBody: R? = nil,  type : T.Type) -> AnyPublisher<T, Error>{
+        var request = URLRequest(url: URL(string: endpoint)!)
+        request.httpMethod = "POST"
+        request.allHTTPHeaderFields = getHeaders()
+        do{
+            request.httpBody = try JSONEncoder().encode(requestBody)
+        }catch{
+            return Fail(error: NetworkError.bodyPerseError)
+                .eraseToAnyPublisher()
+        }
+        return URLSession.shared.dataTaskPublisher(for: request)
+            .tryMap({ (data: Data, response: URLResponse) in
+                
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw NetworkError.responseError
+                }
+                if (200..<300).contains(httpResponse.statusCode){
+                    return data
+                }else{
+                    if httpResponse.statusCode == 422{
+                        throw NetworkError.validationError(data)
+                    }
+                    else {
+                        throw NetworkError.unknown
+                    }
+                }
+            })
+            .decode(type:  type.self, decoder: JSONDecoder())
+            .retry(2)
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
+    }
     
     
-    
-     
     
     private func getHeaders() -> [String: String] {
-            var headers: [String: String] = [:]
-            headers["Content-Type"] = "application/json"
-            headers["Accept"] = "application/json"
-            headers["Platform"] = "iOS"
-            headers["locale"] = "bn"
-            headers["Authorization"] = "pref.getBearerToken()"
-            headers["X-Fcm-Device-Token"] = "RHConstraints.FCM_TOKEN"
-            return headers
-        }
+        var headers: [String: String] = [:]
+        headers["Content-Type"] = "application/json"
+        headers["Accept"] = "application/json"
+        headers["Platform"] = "iOS"
+        headers["locale"] = "bn"
+        headers["Authorization"] = "pref.getBearerToken()"
+        headers["X-Fcm-Device-Token"] = "RHConstraints.FCM_TOKEN"
+        return headers
+    }
 }
 
 
 enum NetworkError: Error {
     case invalidURL
+    case badServerResponse
     case responseError
     case unknown
+    case bodyPerseError
+    case validationError(Data)
 }
-
-extension NetworkError: LocalizedError {
-    var errorDescription: String? {
-        switch self {
-        case .invalidURL:
-            return NSLocalizedString("Invalid URL", comment: "Invalid URL")
-        case .responseError:
-            return NSLocalizedString("Unexpected status code", comment: "Invalid response")
-        case .unknown:
-            return NSLocalizedString("Unknown error", comment: "Unknown error")
-        }
-    }
-}
+ 

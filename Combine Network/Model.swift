@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct Product : Decodable, Identifiable{
+struct Product : Codable, Identifiable{
     var id : Int
     var title : String
     var image : String
